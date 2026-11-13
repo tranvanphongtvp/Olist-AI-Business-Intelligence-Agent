@@ -488,6 +488,4 @@ git push -u origin main
 - [x] FastAPI lưu trạng thái trong Postgres, có `X-API-Key`
 - [x] n8n: báo cáo 7h, duyệt qua Telegram (nút bấm), hỏi đáp tự do qua Telegram
 - [x] Hỗ trợ OpenAI và Groq qua `LLM_PROVIDER`
-- [ ] Kiểm thử live end-to-end với bot Telegram thật (cần bot token + chat id của bạn)#   O l i s t - A I - B u s i n e s s - I n t e l l i g e n c e - A g e n t  
- #   O l i s t - A I - B u s i n e s s - I n t e l l i g e n c e - A g e n t  
- 
+- [ ] Kiểm thử live end-to-end với bot Telegram thật (cần bot token + chat id của bạn)
