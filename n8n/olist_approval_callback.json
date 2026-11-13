@@ -1,0 +1,472 @@
+{
+  "name": "Olist - Hỏi đáp và duyệt qua Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "name": "Nhận câu hỏi và nút duyệt",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 500],
+      "webhookId": "b1000000-0000-4000-8000-000000000001",
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1",
+              "name": "api_base",
+              "value": "http://host.docker.internal:8000",
+              "type": "string"
+            },
+            {
+              "id": "e2",
+              "name": "allowed_user_id",
+              "value": "REPLACE_WITH_YOUR_TELEGRAM_USER_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000002",
+      "name": "Cấu hình Telegram",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 500]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const update = $input.first().json;\nconst callback = update.callback_query;\nconst message = callback?.message ?? update.message;\nconst sender = callback?.from ?? message?.from;\nif (!message?.chat?.id || !sender || sender.is_bot) return [];\n\nconst event = {\n  chat_id: String(message.chat.id),\n  message_id: message.message_id,\n  callback_id: callback?.id ?? '',\n  action: 'notice',\n  question: '',\n  decision: '',\n  run_id: '',\n  notice: '',\n};\n\nif (String(sender.id) !== String(update.allowed_user_id).trim()) {\n  event.notice = 'Bạn không có quyền hỏi hoặc duyệt báo cáo của bot này.';\n} else if (callback) {\n  const match = /^(approve|reject):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(callback.data ?? '');\n  if (match) {\n    event.action = 'callback';\n    event.decision = match[1].toLowerCase();\n    event.run_id = match[2];\n  } else {\n    event.notice = 'Nút duyệt không hợp lệ. Hãy dùng nút trong tin nhắn báo cáo.';\n  }\n} else {\n  const text = typeof message.text === 'string' ? message.text.trim() : '';\n  if (!text || text.startsWith('/')) {\n    event.notice = 'Gửi câu hỏi bằng chữ, ví dụ: Doanh thu tháng 8/2018 so với tháng 7/2018 thay đổi thế nào? Mỗi tin nhắn là một câu hỏi độc lập.';\n  } else if (Array.from(text).length < 3 || Array.from(text).length > 500) {\n    event.notice = 'Câu hỏi cần từ 3 đến 500 ký tự. Hãy gửi lại câu hỏi ngắn gọn hơn.';\n  } else {\n    event.action = 'question';\n    event.question = text;\n  }\n}\n\nreturn [{ json: event, pairedItem: { item: 0 } }];"
+      },
+      "id": "b2000000-0000-4000-8000-000000000001",
+      "name": "Dữ liệu Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "is-callback",
+            "leftValue": "={{ $json.callback_id !== '' }}",
+            "rightValue": true,
+            "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2000000-0000-4000-8000-000000000002",
+      "name": "Là nút bấm?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 500]
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Dữ liệu Telegram').item.json.callback_id }}",
+        "additionalFields": {
+          "text": "={{ $('Dữ liệu Telegram').item.json.action === 'callback' ? 'Đã nhận quyết định, đang xử lý.' : $('Dữ liệu Telegram').item.json.notice }}"
+        }
+      },
+      "id": "b2000000-0000-4000-8000-000000000003",
+      "name": "Xác nhận nút bấm",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [960, 160],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "f1",
+            "leftValue": "={{ $('Dữ liệu Telegram').item.json.action }}",
+            "rightValue": "callback",
+            "operator": { "type": "string", "operation": "equals" }
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000003",
+      "name": "Cho phép duyệt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1200, 160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "valid-question",
+            "leftValue": "={{ $json.action }}",
+            "rightValue": "question",
+            "operator": { "type": "string", "operation": "equals" }
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2000000-0000-4000-8000-000000000004",
+      "name": "Câu hỏi hợp lệ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [960, 720]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Dữ liệu Telegram').item.json.chat_id }}",
+        "text": "={{ $('Dữ liệu Telegram').item.json.notice }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "reply_to_message_id": "={{ $('Dữ liệu Telegram').item.json.message_id }}"
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000004",
+      "name": "Hướng dẫn Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1440, 480],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Dữ liệu Telegram').item.json.chat_id }}",
+        "text": "Đang phân tích câu hỏi của bạn. Tôi sẽ trả kết quả tại đây; nếu có cảnh báo số liệu, bạn sẽ nhận nút Duyệt / Từ chối.",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "reply_to_message_id": "={{ $('Dữ liệu Telegram').item.json.message_id }}"
+        }
+      },
+      "id": "b2000000-0000-4000-8000-000000000005",
+      "name": "Hỏi: Đang phân tích",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1200, 720],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Cấu hình Telegram').item.json.api_base }}/runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ question: $('Dữ liệu Telegram').item.json.question }) }}",
+        "options": {
+          "timeout": 180000,
+          "response": { "response": { "fullResponse": true, "neverError": true, "responseFormat": "json" } }
+        }
+      },
+      "id": "b2000000-0000-4000-8000-000000000006",
+      "name": "Hỏi: Bắt đầu phân tích",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 720],
+      "retryOnFail": false,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_OLIST_API_CREDENTIAL_ID", "name": "Olist API key" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "analysis-ready",
+            "leftValue": "={{ $json.statusCode === 200 && $json.body?.status === 'awaiting_review' && Array.isArray($json.body?.warnings) }}",
+            "rightValue": true,
+            "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2000000-0000-4000-8000-000000000007",
+      "name": "Hỏi: Có kết quả phân tích?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1680, 720]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "has-warnings",
+            "leftValue": "={{ $json.body.warnings.length }}",
+            "rightValue": 0,
+            "operator": { "type": "number", "operation": "gt" }
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2000000-0000-4000-8000-000000000008",
+      "name": "Hỏi: Có số liệu chưa khớp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1920, 640]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const run = $input.first().json.body;\nconst text = ['CẦN DUYỆT BÁO CÁO', 'Run: ' + run.run_id, 'Câu hỏi: ' + run.question, '', run.findings ?? '', '', 'Số chưa khớp dữ liệu: ' + run.warnings.join(', '), '', 'Bấm Duyệt / Từ chối ở cuối phần phân tích.'].join('\\n');\nconst chars = Array.from(text);\nconst total = Math.ceil(chars.length / 3500);\nconst items = [];\nfor (let i = 0; i < total; i++) {\n  const part = chars.slice(i * 3500, (i + 1) * 3500).join('');\n  items.push({\n    json: {\n      text: ('Phần ' + (i + 1) + '/' + total + '\\n' + part).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),\n      run_id: run.run_id,\n      is_last: i === total - 1,\n    },\n    pairedItem: { item: 0 },\n  });\n}\nreturn items;"
+      },
+      "id": "b2000000-0000-4000-8000-000000000009",
+      "name": "Hỏi: Chia nội dung duyệt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 680]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Dữ liệu Telegram').item.json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "replyMarkup": "={{ $json.is_last ? 'inlineKeyboard' : 'none' }}",
+        "inlineKeyboard": {
+          "rows": [{
+            "row": {
+              "buttons": [
+                { "text": "Duyệt", "additionalFields": { "callback_data": "=approve:{{ $json.run_id }}" } },
+                { "text": "Từ chối", "additionalFields": { "callback_data": "=reject:{{ $json.run_id }}" } }
+              ]
+            }
+          }]
+        },
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "reply_to_message_id": "={{ $('Dữ liệu Telegram').item.json.message_id }}"
+        }
+      },
+      "id": "b2000000-0000-4000-8000-000000000010",
+      "name": "Hỏi: Gửi yêu cầu duyệt",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2400, 680],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Cấu hình Telegram').item.json.api_base }}/runs/{{ $json.body.run_id }}/decision",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"decision\": \"approve\"}",
+        "options": {
+          "timeout": 180000,
+          "response": { "response": { "fullResponse": true, "neverError": true, "responseFormat": "json" } }
+        }
+      },
+      "id": "b2000000-0000-4000-8000-000000000011",
+      "name": "Hỏi: Tự động duyệt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2160, 420],
+      "retryOnFail": false,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_OLIST_API_CREDENTIAL_ID", "name": "Olist API key" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Cấu hình Telegram').item.json.api_base }}/runs/{{ $('Dữ liệu Telegram').item.json.run_id }}/decision",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ decision: $('Dữ liệu Telegram').item.json.decision }) }}",
+        "options": {
+          "timeout": 180000,
+          "response": { "response": { "fullResponse": true, "neverError": true, "responseFormat": "json" } }
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000005",
+      "name": "Gửi quyết định",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 80],
+      "retryOnFail": false,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_OLIST_API_CREDENTIAL_ID", "name": "Olist API key" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "g1",
+            "leftValue": "={{ $json.statusCode === 200 && $json.body?.status === 'approved' && typeof $json.body?.report === 'string' && $json.body.report.trim().length > 0 }}",
+            "rightValue": true,
+            "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000006",
+      "name": "Được duyệt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2400, 100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const run = $input.first().json.body;\nconst text = ['BÁO CÁO', 'Run: ' + run.run_id, 'Câu hỏi: ' + run.question, '', run.report].join('\\n');\nconst chars = Array.from(text);\nconst total = Math.ceil(chars.length / 3500);\nconst items = [];\nfor (let i = 0; i < total; i++) {\n  const part = chars.slice(i * 3500, (i + 1) * 3500).join('');\n  items.push({\n    json: { text: ('Phần ' + (i + 1) + '/' + total + '\\n' + part).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') },\n    pairedItem: { item: 0 },\n  });\n}\nreturn items;"
+      },
+      "id": "b2000000-0000-4000-8000-000000000012",
+      "name": "Chia báo cáo Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 0]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Dữ liệu Telegram').item.json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "reply_to_message_id": "={{ $('Dữ liệu Telegram').item.json.message_id }}"
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000007",
+      "name": "Gửi báo cáo Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2880, 0],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Dữ liệu Telegram').item.json.chat_id }}",
+        "text": "={{ $json.body?.status === 'rejected' ? 'Đã từ chối báo cáo. Không xuất báo cáo.' : $json.statusCode === 409 ? 'Báo cáo này đã được xử lý hoặc không còn chờ duyệt. Không gửi lại quyết định.' : $json.statusCode === 404 ? 'Không tìm thấy báo cáo tương ứng với nút duyệt.' : $json.statusCode === 401 ? 'API key không hợp lệ. Kiểm tra credential Olist API key trong n8n.' : $json.error ? 'Chưa xác nhận được kết quả vì lỗi kết nối hoặc hết thời gian chờ. Tác vụ có thể vẫn đang chạy; hãy kiểm tra lịch sử trước khi thử lại.' : 'Không nhận được báo cáo hợp lệ. Hãy kiểm tra execution của node gửi quyết định trong n8n.' }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "reply_to_message_id": "={{ $('Dữ liệu Telegram').item.json.message_id }}"
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000008",
+      "name": "Báo kết quả khác",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2640, 240],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Dữ liệu Telegram').item.json.chat_id }}",
+        "text": "={{ $json.statusCode === 401 ? 'API key không hợp lệ. Kiểm tra credential Olist API key trong n8n.' : $json.statusCode === 422 ? 'API không chấp nhận câu hỏi. Hãy gửi câu hỏi bằng chữ từ 3 đến 500 ký tự.' : $json.error ? 'Không kết nối được API hoặc đã hết thời gian chờ. Tác vụ có thể vẫn đang chạy; hãy kiểm tra lịch sử trước khi gửi lại.' : 'Agent chưa phân tích được câu hỏi này. Hãy kiểm tra execution trong n8n và trạng thái API.' }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "reply_to_message_id": "={{ $('Dữ liệu Telegram').item.json.message_id }}"
+        }
+      },
+      "id": "b2000000-0000-4000-8000-000000000013",
+      "name": "Hỏi: Báo lỗi phân tích",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1920, 960],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Nhận câu hỏi và nút duyệt": { "main": [[{ "node": "Cấu hình Telegram", "type": "main", "index": 0 }]] },
+    "Cấu hình Telegram": { "main": [[{ "node": "Dữ liệu Telegram", "type": "main", "index": 0 }]] },
+    "Dữ liệu Telegram": { "main": [[{ "node": "Là nút bấm?", "type": "main", "index": 0 }]] },
+    "Là nút bấm?": { "main": [
+      [{ "node": "Xác nhận nút bấm", "type": "main", "index": 0 }],
+      [{ "node": "Câu hỏi hợp lệ?", "type": "main", "index": 0 }]
+    ] },
+    "Xác nhận nút bấm": { "main": [[{ "node": "Cho phép duyệt?", "type": "main", "index": 0 }]] },
+    "Cho phép duyệt?": { "main": [
+      [{ "node": "Gửi quyết định", "type": "main", "index": 0 }],
+      [{ "node": "Hướng dẫn Telegram", "type": "main", "index": 0 }]
+    ] },
+    "Câu hỏi hợp lệ?": { "main": [
+      [{ "node": "Hỏi: Đang phân tích", "type": "main", "index": 0 }],
+      [{ "node": "Hướng dẫn Telegram", "type": "main", "index": 0 }]
+    ] },
+    "Hỏi: Đang phân tích": { "main": [[{ "node": "Hỏi: Bắt đầu phân tích", "type": "main", "index": 0 }]] },
+    "Hỏi: Bắt đầu phân tích": { "main": [[{ "node": "Hỏi: Có kết quả phân tích?", "type": "main", "index": 0 }]] },
+    "Hỏi: Có kết quả phân tích?": { "main": [
+      [{ "node": "Hỏi: Có số liệu chưa khớp?", "type": "main", "index": 0 }],
+      [{ "node": "Hỏi: Báo lỗi phân tích", "type": "main", "index": 0 }]
+    ] },
+    "Hỏi: Có số liệu chưa khớp?": { "main": [
+      [{ "node": "Hỏi: Chia nội dung duyệt", "type": "main", "index": 0 }],
+      [{ "node": "Hỏi: Tự động duyệt", "type": "main", "index": 0 }]
+    ] },
+    "Hỏi: Chia nội dung duyệt": { "main": [[{ "node": "Hỏi: Gửi yêu cầu duyệt", "type": "main", "index": 0 }]] },
+    "Hỏi: Tự động duyệt": { "main": [[{ "node": "Được duyệt?", "type": "main", "index": 0 }]] },
+    "Gửi quyết định": { "main": [[{ "node": "Được duyệt?", "type": "main", "index": 0 }]] },
+    "Được duyệt?": { "main": [
+      [{ "node": "Chia báo cáo Telegram", "type": "main", "index": 0 }],
+      [{ "node": "Báo kết quả khác", "type": "main", "index": 0 }]
+    ] },
+    "Chia báo cáo Telegram": { "main": [[{ "node": "Gửi báo cáo Telegram", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh"
+  },
+  "active": false
+}

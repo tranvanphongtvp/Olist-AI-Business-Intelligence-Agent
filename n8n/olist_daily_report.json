@@ -1,0 +1,192 @@
+{
+  "name": "Olist - Báo cáo kinh doanh hằng ngày",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Chạy thủ công",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }]
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "Lịch hằng ngày 7h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 560]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "api_base",
+              "value": "http://host.docker.internal:8000",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "question",
+              "value": "Doanh thu tháng 8/2018 so với tháng 7/2018 thay đổi bao nhiêu? Sản phẩm nào có doanh thu giảm mạnh nhất?",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "manager_chat_id",
+              "value": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "Cấu hình",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.api_base }}/runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ question: $json.question }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "Bắt đầu phân tích",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 420],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_OLIST_API_CREDENTIAL_ID", "name": "Olist API key" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "d1",
+              "leftValue": "={{ $json.warnings.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "Có số liệu chưa khớp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 420]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Cấu hình').item.json.manager_chat_id }}",
+        "text": "=CẦN DUYỆT BÁO CÁO\n\nRun: {{ $json.run_id }}\n\n{{ ($json.findings || '').slice(0, 3000) }}\n\nSố chưa khớp dữ liệu: {{ $json.warnings.join(', ') }}\n\nBấm nút bên dưới để quyết định.",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Duyệt",
+                    "additionalFields": { "callback_data": "=approve:{{ $json.run_id }}" }
+                  },
+                  {
+                    "text": "Từ chối",
+                    "additionalFields": { "callback_data": "=reject:{{ $json.run_id }}" }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "name": "Gửi yêu cầu duyệt",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [960, 300],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Cấu hình').item.json.api_base }}/runs/{{ $json.run_id }}/decision",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"decision\": \"approve\"}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000007",
+      "name": "Tự động duyệt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 560],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_OLIST_API_CREDENTIAL_ID", "name": "Olist API key" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Cấu hình').item.json.manager_chat_id }}",
+        "text": "={{ ($json.report || 'Báo cáo rỗng.').slice(0, 4000) }}",
+        "additionalFields": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000008",
+      "name": "Gửi báo cáo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1200, 560],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID", "name": "Telegram bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Chạy thủ công": { "main": [[{ "node": "Cấu hình", "type": "main", "index": 0 }]] },
+    "Lịch hằng ngày 7h": { "main": [[{ "node": "Cấu hình", "type": "main", "index": 0 }]] },
+    "Cấu hình": { "main": [[{ "node": "Bắt đầu phân tích", "type": "main", "index": 0 }]] },
+    "Bắt đầu phân tích": { "main": [[{ "node": "Có số liệu chưa khớp?", "type": "main", "index": 0 }]] },
+    "Có số liệu chưa khớp?": {
+      "main": [
+        [{ "node": "Gửi yêu cầu duyệt", "type": "main", "index": 0 }],
+        [{ "node": "Tự động duyệt", "type": "main", "index": 0 }]
+      ]
+    },
+    "Tự động duyệt": { "main": [[{ "node": "Gửi báo cáo", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh"
+  },
+  "active": false
+}

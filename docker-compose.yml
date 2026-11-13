@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: olist-postgres
+    env_file: .env
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Chạy một lần khi volume còn trống (theo thứ tự tên file)
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

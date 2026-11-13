@@ -1,0 +1,9 @@
+.env
+data/raw/
+__pycache__/
+.venv/
+*.pyc
+test/
+# Binary tải về (cloudflared) và bản sao lưu workflow
+tools/
+*.bak
